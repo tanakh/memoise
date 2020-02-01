@@ -28,20 +28,19 @@ pub fn memoise(attr: TokenStream, item: TokenStream) -> TokenStream {
         panic!("function return type is required");
     };
 
-    let cache_type = (0..args.keys.len()).fold(
+    let lengths = args.keys.values().collect::<Vec<_>>();
+
+    let cache_type = lengths.iter().rev().fold(
         parse_quote! { Option<#ret_type> },
-        |acc: Type, _| parse_quote! { Vec<#acc> },
+        |acc: Type, limit| parse_quote! { [#acc; #limit + 1] },
     );
 
-    let cache_init = args
-        .keys
-        .values()
-        .collect::<Vec<_>>()
-        .into_iter()
+    let cache_init = lengths
+        .iter()
         .rev()
-        .fold(parse_quote! { None }, |acc: Type, len: &usize| {
+        .fold(parse_quote! { None }, |acc: Expr, limit| {
             parse_quote! {
-                vec![#acc; #len + 1]
+                [#acc; #limit + 1]
             }
         });
 

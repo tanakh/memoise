@@ -33,3 +33,8 @@ fn comb_test() {
     assert_eq!(0, comb(5, 6));
     assert_eq!(10, comb(5, 2));
 }
+
+#[test]
+fn reset_test() {
+    comb_reset();
+}

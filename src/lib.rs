@@ -5,7 +5,7 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
 use std::collections::HashMap;
-use syn::{parse_macro_input, parse_quote, AttributeArgs, Ident, ItemFn, ReturnType, Type};
+use syn::{parse_macro_input, parse_quote, AttributeArgs, Expr, Ident, ItemFn, ReturnType, Type};
 
 #[derive(Debug, FromMeta)]
 struct MemoiseArgs {
@@ -51,13 +51,37 @@ pub fn memoise(attr: TokenStream, item: TokenStream) -> TokenStream {
         .map(|k| Ident::new(k, Span::call_site()))
         .collect::<Vec<_>>();
 
+    let reset_expr = (0..args.keys.len()).fold(quote! { *r = None }, |acc, _| {
+        quote! {
+            for r in r.iter_mut() {
+                #acc
+            }
+        }
+    });
+
+    let reset_expr: Expr = parse_quote! {
+        {
+            let mut r = cache.borrow_mut();
+            #reset_expr;
+        }
+    };
+
+    let reset_fn = Ident::new(
+        &format!("{}_reset", fn_sig.ident.to_string()),
+        Span::call_site(),
+    );
+
     let gen = quote! {
         thread_local!(
             static #cache_ident: std::cell::RefCell<#cache_type> =
                 std::cell::RefCell::new(#cache_init));
 
+        fn #reset_fn() {
+            #cache_ident.with(|cache| #reset_expr);
+        }
+
         #fn_sig {
-            if let Some(ret) = #cache_ident.with(|cache|cache.borrow()#([#key_vars])*) {
+            if let Some(ret) = #cache_ident.with(|cache| cache.borrow()#([#key_vars])*) {
                 return ret;
             }
 

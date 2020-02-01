@@ -7,6 +7,8 @@
 //! For example:
 //!
 //! ```
+//! use memoise::memoise;
+//!
 //! #[memoise(keys(n = 100))]
 //! fn fib(n: usize) -> usize {
 //!     if n == 0 || n == 1 {
@@ -23,6 +25,8 @@
 //! You can specify multiple keys for memoise.
 //!
 //! ```
+//! use memoise::memoise;
+//!
 //! #[memoise(keys(n = 100, m = 50))]
 //! fn comb(n: usize, m: usize) -> usize {
 //!     if m == 0 {
@@ -41,7 +45,7 @@
 //! the function `comb_reset` is defined, so you can call
 //! that function to reset the table.
 //!
-//! ```
+//! ```ignore
 //! let a = comb(10, 5); // calculation
 //! comb_reset();        // reset the memoization table
 //! let a = comb(10, 5); // calculation executed again
@@ -133,7 +137,7 @@ pub fn memoise(attr: TokenStream, item: TokenStream) -> TokenStream {
                 return ret;
             }
 
-            let ret: #ret_type = #fn_block;
+            let ret: #ret_type = (|| #fn_block )();
 
             #cache_ident.with(|cache| {
                 let mut bm = cache.borrow_mut();

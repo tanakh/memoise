@@ -1,3 +1,52 @@
+//! An attribute macro to memoise a function.
+//!
+//! # Usage
+//!
+//! You can just add attribute `memoise` to normal functions
+//! that you want to memoise against arguments.
+//! For example:
+//!
+//! ```
+//! #[memoise(keys(n = 100))]
+//! fn fib(n: usize) -> usize {
+//!     if n == 0 || n == 1 {
+//!         return n;
+//!     }
+//!     fib(n - 1) + fib(n - 2)
+//! }
+//! ```
+//!
+//! You need to specify upper-bound of arguments statically.
+//! Calling memoised function by arguments on out of bounds
+//! cause panic.
+//!
+//! You can specify multiple keys for memoise.
+//!
+//! ```
+//! #[memoise(keys(n = 100, m = 50))]
+//! fn comb(n: usize, m: usize) -> usize {
+//!     if m == 0 {
+//!         return 1;
+//!     }
+//!     if n == 0 {
+//!         return 0;
+//!     }
+//!     comb(n - 1, m - 1) + comb(n - 1, m)
+//! }
+//! ```
+//!
+//! To reuse memoised functions depend on non-key arguments,
+//! you can reset memoise tables by calling automatic defined
+//! function named `<function-name>_reset`. On above code,
+//! the function `comb_reset` is defined, so you can call
+//! that function to reset the table.
+//!
+//! ```
+//! let a = comb(10, 5); // calculation
+//! comb_reset();        // reset the memoization table
+//! let a = comb(10, 5); // calculation executed again
+//! ```
+
 extern crate proc_macro;
 
 use darling::FromMeta;

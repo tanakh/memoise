@@ -1,6 +1,6 @@
 [package]
 name = "memoise"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Hideyuki Tanaka <tanaka.hideyuki@gmail.com>"]
 description = "Simple memoization library for rust"
 repository = "https://github.com/tanakh/memoise"
@@ -12,7 +12,6 @@ license = "BSD-3-Clause"
 proc-macro = true
 
 [dependencies]
-darling = "0.10"
 proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "1.0", features = ["full", "extra-traits"] }

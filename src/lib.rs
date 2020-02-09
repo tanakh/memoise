@@ -10,7 +10,7 @@
 //! use memoise::memoise;
 //!
 //! #[memoise(n <= 100)]
-//! fn fib(n: usize) -> usize {
+//! fn fib(n: i64) -> i64 {
 //!     if n == 0 || n == 1 {
 //!         return n;
 //!     }
@@ -19,7 +19,8 @@
 //! ```
 //!
 //! You need to specify upper-bound of arguments statically.
-//! Calling memoised function by arguments on out of bounds
+//! Bounds can be specified by `<` or `<=` and must be integer literal.
+//! Calling memoised function by arguments that out of bounds
 //! cause panic.
 //!
 //! You can specify multiple keys for memoise.
@@ -50,19 +51,42 @@
 //! comb_reset();        // reset the memoization table
 //! let a = comb(10, 5); // calculation executed again
 //! ```
+//!
+//! You can also specify lower-bounds of keys.
+//!
+//! ```
+//! use memoise::memoise;
+//!
+//! #[memoise(-100 <= n <= 100)]
+//! fn foo(n: i64) -> i64 {
+//!     todo!()
+//! }
+//! ```
+//!
+//! If lower-bounds are not specified,
+//! concider '0 <= _' is specified implicitly.
+//!
+//! And you can specify keys as expressions instead of just variable names.
+//!
+//! ```
+//! use memoise::memoise;
+//!
+//! #[memoise(n * 100 + m <= 100)]
+//! fn bar(n: i64, m: i64) -> i64 {
+//!     todo!()
+//! }
+//! ```
 
 extern crate proc_macro;
 
-use darling::FromMeta;
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
-use std::collections::HashMap;
 use std::ops::Deref;
 use syn::{
     parse::{Parse, ParseStream, Result},
-    parse_macro_input, parse_quote, parse_str, AttributeArgs, BinOp, Error, Expr, ExprBinary,
-    ExprLit, ExprUnary, Ident, ItemFn, Lit, LitInt, ReturnType, Token, Type,
+    parse_macro_input, parse_quote,  BinOp, Error, Expr, ExprBinary, ExprLit,
+    ExprUnary, Ident, ItemFn, Lit, LitInt, ReturnType, Token, Type,
 };
 
 #[derive(PartialEq, Eq, Debug)]
@@ -142,6 +166,8 @@ impl Parse for LitSignedInt {
 
 #[test]
 fn lit_signed_int_test() -> Result<()> {
+    use syn::parse_str;
+
     assert_eq!(
         parse_str::<LitSignedInt>("100")?.0,
         parse_str::<Expr>("100")?
@@ -223,6 +249,8 @@ impl Parse for Key {
 
 #[test]
 fn parse_key_test() -> Result<()> {
+    use syn::parse_str;
+
     assert_eq!(
         parse_str::<Key>("n")?,
         Key {
@@ -356,6 +384,8 @@ impl Parse for Keys {
 
 #[test]
 fn parse_keys_test() -> Result<()> {
+    use syn::parse_str;
+
     assert_eq!(parse_str::<Keys>("n")?.0, vec![parse_str::<Key>("n")?]);
 
     assert_eq!(
@@ -378,8 +408,6 @@ fn parse_keys_test() -> Result<()> {
 
 #[proc_macro_attribute]
 pub fn memoise(attr: TokenStream, item: TokenStream) -> TokenStream {
-    dbg!(&attr);
-
     let keys = parse_macro_input!(attr as Keys).0;
     let item_fn = parse_macro_input!(item as ItemFn);
 
@@ -471,7 +499,7 @@ pub fn memoise(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     };
 
-    eprintln!("{}", gen.to_string());
+    // eprintln!("{}", gen.to_string());
 
     gen.into()
 }

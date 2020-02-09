@@ -17,7 +17,7 @@ memoise = "0.2"
 
 And then, just add `memoise` attribute to functions you want to memoise:
 
-```rs
+```rust
 use memoise::memoise;
 
 #[memoise(n <= 100)]
@@ -31,7 +31,7 @@ fn fib(n: i64) -> i64 {
 
 And you can call it normally:
 
-```rs
+```rust
 fn main() {
     println!("{}", fib(45));
 }
@@ -51,7 +51,7 @@ sys     0m0.016s
 
 If comment out `memoise` attribute, it will not be memoised.
 
-```rs
+```rust
 // #[memoise(n <= 100)]
 fn fib(n: i64) -> i64 {
     if n == 0 || n == 1 {

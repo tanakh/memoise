@@ -4,7 +4,6 @@ version = "0.3.0"
 authors = ["Hideyuki Tanaka <tanaka.hideyuki@gmail.com>"]
 description = "Simple memoization library for rust"
 repository = "https://github.com/tanakh/memoise"
-documentation = "https://docs.rs/memoise"
 edition = "2018"
 license = "BSD-3-Clause"
 

@@ -85,8 +85,8 @@ use quote::quote;
 use std::ops::Deref;
 use syn::{
     parse::{Parse, ParseStream, Result},
-    parse_macro_input, parse_quote,  BinOp, Error, Expr, ExprBinary, ExprLit,
-    ExprUnary, Ident, ItemFn, Lit, LitInt, ReturnType, Token, Type,
+    parse_macro_input, parse_quote, BinOp, Error, Expr, ExprBinary, ExprLit, ExprUnary, Ident,
+    ItemFn, Lit, LitInt, ReturnType, Token, Type,
 };
 
 #[derive(PartialEq, Eq, Debug)]
@@ -429,7 +429,7 @@ pub fn memoise(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let cache_type = lengths.iter().rev().fold(
         parse_quote! { Option<#ret_type> },
-        |acc: Type, limit| parse_quote! { [#acc; #limit] },
+        |acc: Type, _limit| parse_quote! { Vec<#acc> },
     );
 
     let cache_init = lengths
@@ -437,7 +437,7 @@ pub fn memoise(attr: TokenStream, item: TokenStream) -> TokenStream {
         .rev()
         .fold(parse_quote! { None }, |acc: Expr, limit| {
             parse_quote! {
-                [#acc; #limit]
+                vec![#acc; #limit]
             }
         });
 
@@ -498,8 +498,6 @@ pub fn memoise(attr: TokenStream, item: TokenStream) -> TokenStream {
             ret
         }
     };
-
-    // eprintln!("{}", gen.to_string());
 
     gen.into()
 }

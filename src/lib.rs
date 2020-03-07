@@ -76,6 +76,41 @@
 //!     todo!()
 //! }
 //! ```
+//!
+//! Without bounds, cache table will be allocated dynamically.
+//!
+//! ```
+//! use memoise::memoise;
+//!
+//! #[memoise(n, k)]
+//! fn comb(n: usize, k: usize) -> usize {
+//!     if k == 0 {
+//!         return 1;
+//!     }
+//!     if n == 0 {
+//!         return 0;
+//!     }
+//!     comb(n - 1, k - 1) + comb(n - 1, k)
+//! }
+//! ```
+//!
+//! `memoise_map` memoises a function with `BTreeMap`.
+//!
+//! ```
+//! use memoise::memoise_map;
+//!
+//! #[memoise_map(n, k)]
+//! fn comb(n: usize, k: usize) -> usize {
+//!     if k == 0 {
+//!         return 1;
+//!     }
+//!     if n == 0 {
+//!         return 0;
+//!     }
+//!     comb(n - 1, k - 1) + comb(n - 1, k)
+//! }
+//! ```
+//!
 
 extern crate proc_macro;
 
@@ -85,8 +120,8 @@ use quote::quote;
 use std::ops::Deref;
 use syn::{
     parse::{Parse, ParseStream, Result},
-    parse_macro_input, parse_quote, BinOp, Error, Expr, ExprBinary, ExprLit, ExprUnary, Ident,
-    ItemFn, Lit, LitInt, ReturnType, Token, Type,
+    parse_macro_input, parse_quote, BinOp, Error, Expr, ExprBinary, ExprLit, ExprUnary, FnArg,
+    Ident, ItemFn, Lit, LitInt, Pat, ReturnType, Token, Type,
 };
 
 #[derive(PartialEq, Eq, Debug)]
@@ -406,6 +441,7 @@ fn parse_keys_test() -> Result<()> {
     Ok(())
 }
 
+/// Memoise function by using `Vec`
 #[proc_macro_attribute]
 pub fn memoise(attr: TokenStream, item: TokenStream) -> TokenStream {
     let keys = parse_macro_input!(attr as Keys).0;
@@ -421,27 +457,35 @@ pub fn memoise(attr: TokenStream, item: TokenStream) -> TokenStream {
         panic!("function return type is required");
     };
 
-    // TODO: support unbound keys
-    let lengths = keys
-        .iter()
-        .map(|r| r.len().unwrap())
-        .collect::<Vec<usize>>();
+    let lengths = keys.iter().map(|r| r.len()).collect::<Vec<Option<usize>>>();
 
     let cache_type = lengths.iter().rev().fold(
         parse_quote! { Option<#ret_type> },
-        |acc: Type, _limit| parse_quote! { Vec<#acc> },
+        |acc: Type, _| parse_quote! { Vec<#acc> },
     );
 
-    let cache_init = lengths
-        .iter()
-        .rev()
-        .fold(parse_quote! { None }, |acc: Expr, limit| {
-            parse_quote! {
-                vec![#acc; #limit]
-            }
-        });
+    let has_bounds: bool;
 
-    let key_vars = keys
+    let cache_init = if lengths.iter().all(|l| l.is_some()) {
+        has_bounds = true;
+        lengths
+            .iter()
+            .rev()
+            .fold(parse_quote! { None }, |acc: Expr, limit| {
+                parse_quote! {
+                    vec![#acc; #limit]
+                }
+            })
+    } else if lengths.iter().all(|l| l.is_none()) {
+        has_bounds = false;
+        parse_quote! {
+            vec![]
+        }
+    } else {
+        panic!("keys without bounds and keys with bounds are not allowed simultaneously")
+    };
+
+    let key_vars: Vec<Expr> = keys
         .iter()
         .map(|r| {
             let e = &r.expr;
@@ -452,15 +496,45 @@ pub fn memoise(attr: TokenStream, item: TokenStream) -> TokenStream {
                 parse_quote! { (#e) as usize }
             }
         })
-        .collect::<Vec<Expr>>();
+        .collect();
 
-    let reset_expr = (0..keys.len()).fold(quote! { *r = None }, |acc, _| {
-        quote! {
-            for r in r.iter_mut() {
-                #acc
+    let reset_expr: Expr = if has_bounds {
+        (0..keys.len()).fold(parse_quote! { *r = None }, |acc, _| {
+            parse_quote! {
+                for r in r.iter_mut() {
+                    #acc
+                }
             }
+        })
+    } else {
+        parse_quote! { r.clear() }
+    };
+
+    let cache_borrow_var: Ident = parse_quote! {bm};
+
+    let alloc_expr = if has_bounds {
+        quote! {}
+    } else {
+        let mut expr = quote! {};
+
+        for i in 0..key_vars.len() {
+            let ix = &key_vars[i];
+            let ixs = &key_vars[0..i];
+            let init_val: Expr = if i + 1 == key_vars.len() {
+                parse_quote! { None }
+            } else {
+                parse_quote! { vec![] }
+            };
+            expr = quote! {
+                #expr
+                if #cache_borrow_var #([#ixs])*.len() <= #ix {
+                    #cache_borrow_var #([#ixs])*.resize(#ix + 1, #init_val);
+                }
+            };
         }
-    });
+
+        expr
+    };
 
     let reset_expr: Expr = parse_quote! {
         {
@@ -484,15 +558,117 @@ pub fn memoise(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         #fn_sig {
-            if let Some(ret) = #cache_ident.with(|cache| cache.borrow()#([#key_vars])*) {
+            if let Some(ret) = #cache_ident.with(|cache| {
+                let mut #cache_borrow_var = cache.borrow_mut();
+                #alloc_expr
+                #cache_borrow_var#([#key_vars])*.clone()
+            }) {
                 return ret;
             }
 
             let ret: #ret_type = (|| #fn_block )();
 
             #cache_ident.with(|cache| {
+                let mut #cache_borrow_var = cache.borrow_mut();
+                #cache_borrow_var#([#key_vars])* = Some(ret.clone());
+            });
+
+            ret
+        }
+    };
+
+    gen.into()
+}
+
+/// Memoise function by using `BTreeMap`
+#[proc_macro_attribute]
+pub fn memoise_map(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let keys = parse_macro_input!(attr as Keys).0;
+    let item_fn = parse_macro_input!(item as ItemFn);
+
+    for key in keys.iter() {
+        assert!(
+            key.lower_bound.is_none() && key.lower_bound.is_none(),
+            "memoise_map does not allow to specify bounds of keys"
+        );
+    }
+
+    let fn_sig = item_fn.sig;
+    let fn_block = item_fn.block;
+
+    let cache_ident = Ident::new(&fn_sig.ident.to_string().to_uppercase(), Span::call_site());
+    let ret_type = if let ReturnType::Type(_, ty) = &fn_sig.output {
+        ty
+    } else {
+        panic!("function return type is required");
+    };
+
+    let key_types: Vec<Type> = keys
+        .iter()
+        .map(|key| {
+            fn_sig
+                .inputs
+                .iter()
+                .find_map(|arg| {
+                    let expr = &key.expr;
+                    let pat: Pat = parse_quote! { #expr };
+                    match arg {
+                        FnArg::Typed(pat_type) if pat == *pat_type.pat => {
+                            Some((*pat_type.ty).clone())
+                        }
+                        _ => None,
+                    }
+                })
+                .expect(&format!("Cannot infer the type of key `{}`", {
+                    let e = &key.expr;
+                    quote!(#e).to_string()
+                }))
+        })
+        .collect();
+
+    let key_type: Type = parse_quote! { (#(#key_types),*) };
+
+    let cache_type: Type = parse_quote! { std::collections::BTreeMap<#key_type, #ret_type> };
+
+    let cache_init: Expr = parse_quote! {
+        std::collections::BTreeMap::new()
+    };
+
+    let key_vars: Vec<Expr> = keys.iter().map(|r| r.expr.clone()).collect();
+
+    let reset_expr: Expr = parse_quote! {
+        {
+            let mut r = cache.borrow_mut();
+            r.clear();
+        }
+    };
+
+    let reset_fn_name = Ident::new(
+        &format!("{}_reset", fn_sig.ident.to_string()),
+        Span::call_site(),
+    );
+
+    let gen = quote! {
+        thread_local!(
+            static #cache_ident: std::cell::RefCell<#cache_type> =
+                std::cell::RefCell::new(#cache_init));
+
+        fn #reset_fn_name() {
+            #cache_ident.with(|cache| #reset_expr);
+        }
+
+        #fn_sig {
+            if let Some(ret) = #cache_ident.with(|cache|
+                cache.borrow().get(&(#(#key_vars),*)).cloned())
+            {
+                return ret.clone();
+            }
+
+            let ret: #ret_type = (|| #fn_block )();
+
+            #cache_ident.with(|cache| {
                 let mut bm = cache.borrow_mut();
-                bm#([#key_vars])* = Some(ret);
+                bm.insert((#(#key_vars),*), ret.clone());
             });
 
             ret

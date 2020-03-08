@@ -89,8 +89,8 @@ fn fib(n: i64) -> i64 {
 `_reset` function frees allocated `Vec`.
 
 ```rust
-fib(42); // This allocates cache table for `0..n+1`
-fib_reset();
+fib(42);     // This allocates cache table for `0..n+1`
+fib_reset(); // Frees allocated table.
 ```
 
 `memoise_map` memoises a function by using `BTreeMap`.
